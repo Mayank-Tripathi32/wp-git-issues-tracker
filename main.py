@@ -279,13 +279,15 @@ def main():
                 continue
             if skill_match not in ["Yes", "Maybe"]:
                 continue
-            if difficulty == "High":
+            if difficulty in ["High", "Beyond"]:
                 continue
 
             score = 0
             if skill_match == "Yes":
                 score += 3
-            if difficulty == "Low":
+            if difficulty == "Easy":
+                score += 3
+            elif difficulty == "Low":
                 score += 2
             elif difficulty == "Medium":
                 score += 1

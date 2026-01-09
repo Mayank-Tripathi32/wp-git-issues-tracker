@@ -82,13 +82,29 @@ class SheetsPersistence:
     def get_existing_issues(self) -> dict[int, dict]:
         """Get all existing issues from the ledger as a dict keyed by issue ID."""
         ledger = self._spreadsheet.worksheet("Triage Ledger")
-        records = ledger.get_all_records()
+        try:
+            records = ledger.get_all_records(expected_headers=self.LEDGER_HEADERS)
+        except Exception:
+            # Fallback: read raw values if headers don't match
+            all_values = ledger.get_all_values()
+            if len(all_values) <= 1:
+                return {}
+            headers = self.LEDGER_HEADERS
+            records = []
+            for row in all_values[1:]:
+                record = {}
+                for i, h in enumerate(headers):
+                    record[h] = row[i] if i < len(row) else ""
+                records.append(record)
 
         result = {}
         for record in records:
             issue_id = record.get("Issue ID")
             if issue_id:
-                result[int(issue_id)] = record
+                try:
+                    result[int(issue_id)] = record
+                except ValueError:
+                    pass
         return result
 
     def upsert_issue(
@@ -171,12 +187,18 @@ class SheetsPersistence:
             if row_num:
                 ledger.update(f"O{row_num}", [["TRUE"]])
 
+    ACTIVE_HEADERS = ["Issue ID", "Title", "URL", "Difficulty", "Skill Match", "Summary", "Reason"]
+
     def update_active_candidates(self):
         """Update the Active Candidates sheet based on ledger data."""
         ledger = self._spreadsheet.worksheet("Triage Ledger")
         active = self._spreadsheet.worksheet("Active Candidates")
 
-        records = ledger.get_all_records()
+        # Use expected_headers to avoid duplicate header errors
+        try:
+            records = ledger.get_all_records(expected_headers=self.LEDGER_HEADERS)
+        except Exception:
+            records = self.get_existing_issues().values()
 
         candidates = []
         for record in records:
@@ -187,7 +209,7 @@ class SheetsPersistence:
             is_candidate = (
                 status in ["New", "Candidate", ""]
                 and skill_match in ["Yes", "Maybe"]
-                and difficulty != "High"
+                and difficulty not in ["High", "Beyond"]
             )
 
             if is_candidate:
@@ -197,11 +219,12 @@ class SheetsPersistence:
                     record.get("URL"),
                     difficulty,
                     skill_match,
+                    record.get("Summary", "")[:200],  # Truncate for readability
                     record.get("Reason"),
                 ])
 
         active.clear()
-        active.update("A1", [["Issue ID", "Title", "URL", "Difficulty", "Skill Match", "Reason"]])
+        active.update("A1", [self.ACTIVE_HEADERS])
 
         if candidates:
             active.update("A2", candidates)
@@ -211,7 +234,10 @@ class SheetsPersistence:
     def get_issues_needing_retriage(self) -> list[int]:
         """Get list of issue IDs that need re-triage."""
         ledger = self._spreadsheet.worksheet("Triage Ledger")
-        records = ledger.get_all_records()
+        try:
+            records = ledger.get_all_records(expected_headers=self.LEDGER_HEADERS)
+        except Exception:
+            records = self.get_existing_issues().values()
 
         return [
             int(r["Issue ID"])
