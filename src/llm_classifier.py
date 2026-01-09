@@ -17,6 +17,7 @@ class Classification:
     test_focused: str  # Yes | No | Unclear
     risk_flags: list[str]
     one_line_reason: str
+    summary: str = ""  # 2-3 sentence problem summary
     raw_response: Optional[str] = None
     error: Optional[str] = None
 
@@ -29,6 +30,7 @@ class Classification:
             test_focused=data.get("test_focused", "Unknown"),
             risk_flags=data.get("risk_flags", []),
             one_line_reason=data.get("one_line_reason", ""),
+            summary=data.get("summary", ""),
             raw_response=raw,
         )
 
@@ -41,6 +43,7 @@ class Classification:
             test_focused="Unknown",
             risk_flags=[],
             one_line_reason="",
+            summary="",
             error=error_msg,
         )
 

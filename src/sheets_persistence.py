@@ -27,6 +27,7 @@ class SheetsPersistence:
         "Risk Flags",
         "Manual Confidence",
         "Reason",
+        "Summary",
         "Last Checked At",
         "Updated At (GitHub)",
         "Needs Re-triage",
@@ -145,6 +146,7 @@ class SheetsPersistence:
             risk_flags,
             "",  # Manual Confidence - user fills
             classification.get("one_line_reason", "") if classification else "",
+            classification.get("summary", "") if classification else "",
             now,
             issue.get("updated_at", ""),
             "FALSE",

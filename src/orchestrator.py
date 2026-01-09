@@ -1,6 +1,7 @@
 """Main orchestrator for the issue triage pipeline."""
 
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Optional
 
@@ -77,37 +78,46 @@ class TriageOrchestrator:
         results = []
 
         if classify_candidates and candidates:
-            print(f"\nClassifying {len(candidates)} candidates with LLM (fetching comments)...")
+            print(f"\nClassifying {len(candidates)} candidates with LLM (parallel, fetching comments)...")
 
-            for i, (issue, filter_result) in enumerate(candidates):
-                print(f"  [{i+1}/{len(candidates)}] #{issue['issue_id']}: {issue['title'][:50]}...")
-
+            def process_candidate(item):
+                issue, filter_result = item
                 # Fetch comments for issues that have them
                 if issue.get("comments_count", 0) > 0:
                     issue["recent_comments"] = self.fetcher.fetch_comments(
                         issue["issue_id"], max_comments=5
                     )
-
                 classification = self.classifier.classify_issue(issue)
+                return (issue, classification, filter_result)
 
-                results.append((
-                    issue,
-                    self._classification_to_dict(classification),
-                    self._filter_result_to_dict(filter_result),
-                ))
+            # Process in parallel with 5 workers (balance speed vs rate limits)
+            completed = 0
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                futures = {executor.submit(process_candidate, item): item for item in candidates}
+                for future in as_completed(futures):
+                    issue, classification, filter_result = future.result()
+                    completed += 1
+                    print(f"  [{completed}/{len(candidates)}] #{issue['issue_id']}: {issue['title'][:50]}...")
+
+                    # Post-classification filter: mark as Filtered if skill_match is No
+                    classification_dict = self._classification_to_dict(classification)
+                    if classification_dict and classification_dict.get("skill_match") == "No":
+                        results.append((issue, classification_dict, self._filter_result_to_dict(filter_result), "Filtered"))
+                    else:
+                        results.append((issue, classification_dict, self._filter_result_to_dict(filter_result), "Candidate"))
 
         for issue, filter_result in non_candidates:
             results.append((
                 issue,
                 None,
                 self._filter_result_to_dict(filter_result),
+                "Filtered",
             ))
 
         if not dry_run and results:
             print(f"\nWriting {len(results)} issues to Google Sheets...")
             existing_cache = self.sheets.get_existing_issues()
-            for i, (issue, classification, filter_result) in enumerate(results):
-                status = "Candidate" if classification else "Filtered"
+            for i, (issue, classification, filter_result, status) in enumerate(results):
                 self.sheets.upsert_issue(issue, classification, filter_result, status, existing_cache)
                 if (i + 1) % 10 == 0:
                     print(f"  Written {i + 1}/{len(results)}...")
@@ -259,6 +269,7 @@ class TriageOrchestrator:
                 "test_focused": "Error",
                 "risk_flags": [c.error],
                 "one_line_reason": f"Classification failed: {c.error}",
+                "summary": "",
             }
 
         return {
@@ -268,6 +279,7 @@ class TriageOrchestrator:
             "test_focused": c.test_focused,
             "risk_flags": c.risk_flags,
             "one_line_reason": c.one_line_reason,
+            "summary": c.summary,
         }
 
     def _filter_result_to_dict(self, fr: FilterResult) -> dict:
