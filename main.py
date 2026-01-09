@@ -305,14 +305,18 @@ def main():
         print("=" * 70)
 
         for i, (score, data) in enumerate(picks[:args.limit], 1):
-            title = data.get("Title", "")[:50]
+            title = data.get("Title", "")[:45]
             difficulty = data.get("LLM Difficulty", "?")
             skill = data.get("LLM Skill Match", "?")
             url = data.get("URL", "")
             test_focused = "✓" if data.get("Test Focused") == "Yes" else " "
+            scope = data.get("Scope Clarity", "?")[:5]
+            reason = data.get("Reason", "")[:60]
 
             print(f"\n{i}. [{difficulty}] {title}...")
-            print(f"   Skill: {skill} | Test: {test_focused} | {url}")
+            print(f"   Skill: {skill} | Test: {test_focused} | Scope: {scope}")
+            print(f"   {reason}")
+            print(f"   {url}")
 
         print(f"\n{'=' * 70}")
         print(f"Showing {min(len(picks), args.limit)} of {len(picks)} candidates")

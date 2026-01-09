@@ -50,7 +50,7 @@ class LLMClassifier:
 
     OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
     OPENROUTER_CREDITS_URL = "https://openrouter.ai/api/v1/credits"
-    DEFAULT_MODEL = "anthropic/claude-3-haiku"
+    DEFAULT_MODEL = "deepseek/deepseek-chat"  # Cheapest with excellent reasoning
 
     def __init__(
         self,
@@ -128,10 +128,18 @@ class LLMClassifier:
         """Build the user prompt from template and issue data."""
         labels_str = ", ".join(issue.get("labels", [])) or "None"
 
+        comments_str = "None"
+        if issue.get("recent_comments"):
+            comment_lines = []
+            for c in issue["recent_comments"][:5]:
+                prefix = "[MAINTAINER] " if c.get("is_maintainer") else ""
+                comment_lines.append(f"- {prefix}{c['author']}: {c['body'][:300]}")
+            comments_str = "\n".join(comment_lines) if comment_lines else "None"
+
         return (
             self.user_template.replace("{{TITLE}}", issue.get("title", ""))
             .replace("{{LABELS}}", labels_str)
-            .replace("{{LAST_UPDATE_SUMMARY}}", last_update_summary or "None")
+            .replace("{{COMMENTS}}", comments_str)
             .replace("{{BODY}}", issue.get("body", "")[:2000])
         )
 

@@ -96,6 +96,46 @@ class GitHubFetcher:
             "comments_count": issue.get("comments", 0),
         }
 
+    def fetch_comments(self, issue_number: int, max_comments: int = 10) -> list[dict]:
+        """
+        Fetch comments for an issue.
+
+        Args:
+            issue_number: The issue number
+            max_comments: Maximum number of comments to fetch (most recent)
+
+        Returns:
+            List of comment dictionaries with author, body, created_at
+        """
+        url = f"{self.BASE_URL}/repos/{self.repo}/issues/{issue_number}/comments"
+        params = {"per_page": max_comments, "direction": "desc"}
+
+        try:
+            response = requests.get(url, headers=self.headers, params=params)
+            response.raise_for_status()
+            comments = response.json()
+
+            return [
+                {
+                    "author": c.get("user", {}).get("login", "unknown"),
+                    "body": (c.get("body") or "")[:500],  # Truncate long comments
+                    "created_at": c.get("created_at"),
+                    "is_maintainer": c.get("author_association") in ["OWNER", "MEMBER", "COLLABORATOR"],
+                }
+                for c in comments[:max_comments]
+            ]
+        except Exception:
+            return []
+
+    def fetch_issue_with_comments(self, issue_number: int, max_comments: int = 25) -> dict:
+        """Fetch a single issue with its recent comments."""
+        issue = self.fetch_single_issue(issue_number)
+        if issue.get("comments_count", 0) > 0:
+            issue["recent_comments"] = self.fetch_comments(issue_number, max_comments)
+        else:
+            issue["recent_comments"] = []
+        return issue
+
     def check_for_linked_prs(self, issue_number: int) -> bool:
         """Check if an issue has linked PRs via timeline events."""
         url = f"{self.BASE_URL}/repos/{self.repo}/issues/{issue_number}/timeline"

@@ -77,13 +77,17 @@ class TriageOrchestrator:
         results = []
 
         if classify_candidates and candidates:
-            print(f"\nClassifying {len(candidates)} candidates with LLM...")
+            print(f"\nClassifying {len(candidates)} candidates with LLM (fetching comments)...")
 
-            def progress(current, total, issue):
-                print(f"  [{current}/{total}] #{issue['issue_id']}: {issue['title'][:50]}...")
+            for i, (issue, filter_result) in enumerate(candidates):
+                print(f"  [{i+1}/{len(candidates)}] #{issue['issue_id']}: {issue['title'][:50]}...")
 
-            for issue, filter_result in candidates:
-                progress(len(results) + 1, len(candidates), issue)
+                # Fetch comments for issues that have them
+                if issue.get("comments_count", 0) > 0:
+                    issue["recent_comments"] = self.fetcher.fetch_comments(
+                        issue["issue_id"], max_comments=5
+                    )
+
                 classification = self.classifier.classify_issue(issue)
 
                 results.append((

@@ -6,11 +6,11 @@ Issue title:
 Labels:
 {{LABELS}}
 
-Last update summary (if any):
-{{LAST_UPDATE_SUMMARY}}
-
 Issue description (truncated if long):
 {{BODY}}
+
+Recent comments (maintainer feedback is important):
+{{COMMENTS}}
 
 Classify the issue based on:
 - Implementation scope (how many files/components affected?)

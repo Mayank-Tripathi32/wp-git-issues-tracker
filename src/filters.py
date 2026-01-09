@@ -1,6 +1,7 @@
 """Rule-based filtering for GitHub issues."""
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Optional
 
 
@@ -121,6 +122,22 @@ class IssueFilter:
             if pattern in title or pattern in labels:
                 return True
         return False
+
+    def get_staleness_days(self, issue: dict) -> int:
+        """Calculate how many days since the issue was last updated."""
+        updated_at = issue.get("updated_at")
+        if not updated_at:
+            return 0
+        try:
+            updated = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+            now = datetime.now(timezone.utc)
+            return (now - updated).days
+        except Exception:
+            return 0
+
+    def is_stale(self, issue: dict, days_threshold: int = 180) -> bool:
+        """Check if an issue hasn't been updated in a long time."""
+        return self.get_staleness_days(issue) > days_threshold
 
     def filter_batch(self, issues: list[dict]) -> list[tuple[dict, FilterResult]]:
         """Filter a batch of issues, returning issues that passed with their results."""
