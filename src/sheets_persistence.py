@@ -35,6 +35,8 @@ class SheetsPersistence:
         "Positive Signals",
     ]
 
+    ACTIVE_HEADERS = ["Issue ID", "Title", "URL", "Difficulty", "Skill Match", "Summary", "Reason"]
+
     def __init__(
         self,
         credentials_path: str,
@@ -55,22 +57,29 @@ class SheetsPersistence:
         self._spreadsheet = self._client.open_by_url(self.spreadsheet_url)
 
     def setup_sheets(self):
-        """Create required sheets if they don't exist."""
+        """Create required sheets if they don't exist, using Google Sheets Tables."""
         existing = [ws.title for ws in self._spreadsheet.worksheets()]
 
         if "Triage Ledger" not in existing:
-            ledger = self._spreadsheet.add_worksheet("Triage Ledger", rows=1000, cols=20)
-            ledger.append_row(self.LEDGER_HEADERS)
+            ledger = self._spreadsheet.add_worksheet("Triage Ledger", rows=1000, cols=len(self.LEDGER_HEADERS))
+            ledger.update("A1", [self.LEDGER_HEADERS])
             ledger.freeze(rows=1)
+            # Add dropdown validation for key columns
+            self._add_dropdown_validation(ledger, "E", ["New", "Candidate", "In Progress", "PR Opened", "Completed", "Skipped", "Filtered"])
+            self._add_dropdown_validation(ledger, "F", ["Easy", "Low", "Medium", "High", "Beyond"])
+            self._add_dropdown_validation(ledger, "G", ["Yes", "Maybe", "No"])
         else:
             ledger = self._spreadsheet.worksheet("Triage Ledger")
-            if ledger.row_values(1) != self.LEDGER_HEADERS:
+            current_headers = ledger.row_values(1)
+            if current_headers != self.LEDGER_HEADERS:
                 ledger.update("A1", [self.LEDGER_HEADERS])
 
         if "Active Candidates" not in existing:
-            active = self._spreadsheet.add_worksheet("Active Candidates", rows=500, cols=10)
-            active.update("A1", [["Issue ID", "Title", "URL", "Difficulty", "Skill Match", "Reason"]])
+            active = self._spreadsheet.add_worksheet("Active Candidates", rows=500, cols=len(self.ACTIVE_HEADERS))
+            active.update("A1", [self.ACTIVE_HEADERS])
             active.freeze(rows=1)
+            self._add_dropdown_validation(active, "D", ["Easy", "Low", "Medium", "High", "Beyond"])
+            self._add_dropdown_validation(active, "E", ["Yes", "Maybe", "No"])
 
         default_sheet = self._spreadsheet.worksheet("Sheet1") if "Sheet1" in existing else None
         if default_sheet and len(existing) > 1:
@@ -78,6 +87,36 @@ class SheetsPersistence:
                 self._spreadsheet.del_worksheet(default_sheet)
             except Exception:
                 pass
+
+    def _add_dropdown_validation(self, worksheet, column: str, options: list[str]):
+        """Add dropdown data validation to a column."""
+        sheet_id = worksheet.id
+        col_index = ord(column.upper()) - ord('A')
+
+        request = {
+            "setDataValidation": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "startRowIndex": 1,  # Skip header
+                    "endRowIndex": 1000,
+                    "startColumnIndex": col_index,
+                    "endColumnIndex": col_index + 1,
+                },
+                "rule": {
+                    "condition": {
+                        "type": "ONE_OF_LIST",
+                        "values": [{"userEnteredValue": opt} for opt in options]
+                    },
+                    "showCustomUi": True,
+                    "strict": False,
+                }
+            }
+        }
+
+        try:
+            self._spreadsheet.batch_update({"requests": [request]})
+        except Exception as e:
+            print(f"  Note: Could not add dropdown validation ({e}).")
 
     def get_existing_issues(self) -> dict[int, dict]:
         """Get all existing issues from the ledger as a dict keyed by issue ID."""
@@ -186,8 +225,6 @@ class SheetsPersistence:
             row_num = self._find_row_by_issue_id(ledger, issue_id)
             if row_num:
                 ledger.update(f"O{row_num}", [["TRUE"]])
-
-    ACTIVE_HEADERS = ["Issue ID", "Title", "URL", "Difficulty", "Skill Match", "Summary", "Reason"]
 
     def update_active_candidates(self):
         """Update the Active Candidates sheet based on ledger data."""
